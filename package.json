@@ -1,1 +1,1 @@
-{"name": "iconwebapp", "version": "1.0.0", "dependencies": {"google-spreadsheet": "^4.1.4", "google-auth-library": "^9.6.3"}}
+{"name":"iconwebapp","version":"1.0.0","dependencies":{"google-auth-library":"^9.15.1","google-spreadsheet":"^4.1.5"}}

@@ -2,54 +2,69 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
 exports.handler = async (event, context) => {
-  try {
-    // 1. ตั้งค่าการยืนยันตัวตนด้วย Service Account
     const serviceAccountAuth = new JWT({
-      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, // อีเมลจาก Google Cloud Console
-      // สำคัญมาก: ต้องจัดการเรื่อง \n ของ Private Key ให้ถูกต้องเพื่อให้ Google ยอมรับ
-      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), 
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+        key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    // 2. เชื่อมต่อกับ Spreadsheet โดยใช้ ID ที่ตั้งไว้ใน Environment Variable
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
     
-    // โหลดข้อมูลพื้นฐานของไฟล์
-    await doc.loadInfo(); 
-    
-    // 3. เลือก Sheet แรก (index 0)
-    const sheet = doc.sheetsByIndex[0]; 
-    
-    // ดึงข้อมูลแถวทั้งหมด (Rows)
-    const rows = await sheet.getRows();
-    
-    // แปลงข้อมูลแถวให้อยู่ในรูปแบบ Object (JSON) เพื่อให้ง่ายต่อการนำไปใช้งานหน้าเว็บ
-    const data = rows.map(row => row.toObject());
+    try {
+        await doc.loadInfo();
+        const action = event.queryStringParameters.action;
+        const body = event.body ? JSON.parse(event.body) : {};
 
-    // 4. ส่งผลลัพธ์กลับไปหาหน้าเว็บ
-    return {
-      statusCode: 200,
-      headers: { 
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*" // อนุญาตให้ดึงข้อมูลข้าม Domain ได้
-      },
-      body: JSON.stringify({
-        success: true,
-        sheetTitle: doc.title,
-        updatedAt: new Date().toLocaleString('th-TH'),
-        data: data
-      }),
-    };
+        // --- 1. Login Logic ---
+        if (action === 'login') {
+            const sheet = doc.sheetsByName['name'];
+            const rows = await sheet.getRows();
+            const user = rows.find(r => String(r.get('Phone')).trim() === String(body.phone).trim());
+            
+            if (!user) return { statusCode: 404, body: JSON.stringify({ message: "ไม่พบเบอร์โทรศัพท์" }) };
+            if (user.get('Status') !== "อนุมัติ") return { statusCode: 403, body: JSON.stringify({ message: "รออนุมัติ" }) };
+            
+            return {
+                statusCode: 200,
+                body: JSON.stringify({ success: true, id: user.get('ID'), name: user.get('Username'), role: user.get('Role') })
+            };
+        }
 
-  } catch (error) {
-    // กรณีเกิดข้อผิดพลาด ให้ส่งรายละเอียด Error กลับไปตรวจสอบ
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        success: false, 
-        error: error.message 
-      }),
-    };
-  }
+        // --- 2. Save Check-in (บันทึกงาน) ---
+        if (action === 'saveData') {
+            const sheet = doc.sheetsByName['data_check'];
+            const nameSheet = doc.sheetsByName['name'];
+            const nameRows = await nameSheet.getRows();
+            const userRow = nameRows.find(r => String(r.get('ID')) === String(body.id));
+            
+            const wage = parseFloat(userRow.get('Wage')) || 0;
+            const dayValue = (body.workType === "ช่วงเช้า" || body.workType === "ช่วงบ่าย") ? 0.5 : 1.0;
+            
+            await sheet.addRow({
+                Timestamp: new Date().toISOString(),
+                Date: body.date,
+                ID: body.id,
+                Name: body.name,
+                WorkType: body.workType,
+                Latitude: body.latitude,
+                Longitude: body.longitude,
+                Status: "ปกติ",
+                EarnedAmount: dayValue * wage
+            });
+            return { statusCode: 200, body: JSON.stringify({ success: true }) };
+        }
+
+        // --- 3. Get History (ดึงประวัติ) ---
+        if (action === 'getData') {
+            const sheet = doc.sheetsByName['data_check'];
+            const rows = await sheet.getRows();
+            const result = rows.map(r => r.toObject())
+                             .filter(r => body.role === 'admin' || String(r.ID) === String(body.userId))
+                             .reverse();
+            return { statusCode: 200, body: JSON.stringify(result) };
+        }
+
+    } catch (error) {
+        return { statusCode: 500, body: JSON.stringify({ success: false, error: error.message }) };
+    }
 };

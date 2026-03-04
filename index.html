@@ -1,30 +1,43 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <title>ระบบจัดการธุรกิจ - iconwebapp</title>
-    <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; }
-        .logo { width: 100px; }
-    </style>
-</head>
-<body>
-    <img src="favicon-MemberList250x250.png" class="logo" alt="Logo">
-    <h1>ระบบจัดการข้อมูล Google Sheets</h1>
-    <div id="data-container">กำลังโหลดข้อมูล...</div>
+<script>
+let currentUser = JSON.parse(localStorage.getItem('session'));
 
-    <script>
-        async function fetchData() {
-            try {
-                const response = await fetch('/.netlify/functions/api');
-                const result = await response.json();
-                document.getElementById('data-container').innerText = 
-                    result.success ? 'เชื่อมต่อสำเร็จ: ' + result.sheetTitle : 'Error: ' + result.error;
-            } catch (e) {
-                document.getElementById('data-container').innerText = 'ไม่สามารถดึงข้อมูลได้';
-            }
+// เปลี่ยนฟังก์ชัน Login
+async function doLogin() {
+    const p = $('#phone').val();
+    showLoading('กำลังตรวจสอบสิทธิ์...');
+
+    try {
+        const response = await fetch('/.netlify/functions/api?action=login', {
+            method: 'POST',
+            body: JSON.stringify({ phone: p })
+        });
+        const res = await response.json();
+        
+        if (response.ok) {
+            currentUser = res;
+            localStorage.setItem('session', JSON.stringify(res));
+            showUI();
+        } else {
+            Swal.fire("ผิดพลาด", res.message, "error");
         }
-        fetchData();
-    </script>
-</body>
-</html>
+    } catch (e) {
+        Swal.fire("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", "error");
+    } finally {
+        closeLoading();
+    }
+}
+
+// เปลี่ยนฟังก์ชันโหลดตาราง
+async function loadWorkTable() {
+    try {
+        const response = await fetch('/.netlify/functions/api?action=getData', {
+            method: 'POST',
+            body: JSON.stringify({ userId: currentUser.id, role: currentUser.role })
+        });
+        const data = await response.json();
+        renderDataTable(data); // ใช้ฟังก์ชันวาดตารางเดิมของคุณได้เลย
+    } catch (e) {
+        console.error("Load table error", e);
+    }
+}
+</script>
