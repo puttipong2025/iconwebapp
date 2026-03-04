@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ระบบจัดการธุรกิจ - iconwebapp</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        .logo { width: 100px; }
+    </style>
+</head>
+<body>
+    <img src="favicon-MemberList250x250.png" class="logo" alt="Logo">
+    <h1>ระบบจัดการข้อมูล Google Sheets</h1>
+    <div id="data-container">กำลังโหลดข้อมูล...</div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const response = await fetch('/.netlify/functions/api');
+                const result = await response.json();
+                document.getElementById('data-container').innerText = 
+                    result.success ? 'เชื่อมต่อสำเร็จ: ' + result.sheetTitle : 'Error: ' + result.error;
+            } catch (e) {
+                document.getElementById('data-container').innerText = 'ไม่สามารถดึงข้อมูลได้';
+            }
+        }
+        fetchData();
+    </script>
+</body>
+</html>
